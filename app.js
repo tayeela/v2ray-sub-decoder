@@ -508,6 +508,9 @@ const els = {
   status: document.getElementById("status"),
   results: document.getElementById("results"),
   output: document.getElementById("output"),
+  outputPre: document.getElementById("outputPre"),
+  outputActions: document.getElementById("outputActions"),
+  cards: document.getElementById("cards"),
   count: document.getElementById("count"),
   tabs: document.getElementById("tabs"),
   copy: document.getElementById("copyBtn"),
@@ -515,7 +518,7 @@ const els = {
   repoLink: document.getElementById("repoLink"),
 };
 
-let current = { nodes: [], tab: "json" };
+let current = { nodes: [], tab: "nodes" };
 
 const RENDER = {
   json: (n) => toJSON(n),
@@ -532,8 +535,95 @@ function showStatus(type, html) {
 }
 function hideStatus() { els.status.classList.add("hidden"); }
 
+// Копирование с fallback на execCommand для контекстов, где Clipboard API недоступен.
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e2) {
+      return false;
+    }
+  }
+}
+
+const COPY_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const CHECK_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+// Карточка одной ноды: описание провайдера (name) + бейдж протокола + сервер +
+// кнопка быстрого копирования ссылки именно этой ноды.
+function renderCards(nodes) {
+  els.cards.innerHTML = "";
+  nodes.forEach((n) => {
+    const card = document.createElement("div");
+    card.className = "node-card";
+
+    const top = document.createElement("div");
+    top.className = "node-top";
+    const name = document.createElement("div");
+    name.className = "node-name";
+    name.textContent = n.name || n.server || "(без названия)";
+
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.title = "Скопировать ссылку";
+    btn.innerHTML = COPY_ICON;
+    btn.addEventListener("click", async () => {
+      const ok = await copyText(toURI(n));
+      if (!ok) {
+        btn.title = "Не удалось скопировать";
+        return;
+      }
+      btn.classList.add("copied");
+      btn.innerHTML = CHECK_ICON;
+      setTimeout(() => {
+        btn.classList.remove("copied");
+        btn.innerHTML = COPY_ICON;
+      }, 1400);
+    });
+    top.append(name, btn);
+
+    const sub = document.createElement("div");
+    sub.className = "node-sub";
+    const badge = document.createElement("span");
+    badge.className = "badge " + n.protocol;
+    badge.textContent = n.protocol === "shadowsocks" ? "ss" : n.protocol;
+    const server = document.createElement("span");
+    server.className = "node-server";
+    server.textContent = `${n.server}:${n.port}`;
+    server.title = `${n.server}:${n.port}`;
+    sub.append(badge, server);
+
+    card.append(top, sub);
+    els.cards.appendChild(card);
+  });
+}
+
 function renderOutput() {
-  els.output.textContent = RENDER[current.tab](current.nodes);
+  if (current.tab === "nodes") {
+    els.cards.classList.remove("hidden");
+    els.outputPre.classList.add("hidden");
+    els.outputActions.classList.add("hidden");
+    renderCards(current.nodes);
+  } else {
+    els.cards.classList.add("hidden");
+    els.outputPre.classList.remove("hidden");
+    els.outputActions.classList.remove("hidden");
+    els.output.textContent = RENDER[current.tab](current.nodes);
+  }
 }
 
 function showResults(nodes, errors) {
@@ -609,7 +699,7 @@ els.tabs.addEventListener("click", (e) => {
 });
 
 els.copy.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(els.output.textContent);
+  await copyText(els.output.textContent);
   els.copy.textContent = "Скопировано ✓";
   setTimeout(() => (els.copy.textContent = "Копировать"), 1500);
 });

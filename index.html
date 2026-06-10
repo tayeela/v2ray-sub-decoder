@@ -97,7 +97,8 @@
     <section id="results" class="card hidden">
       <div class="results-head">
         <div class="tabs" id="tabs">
-          <button class="tab active" data-tab="json">JSON</button>
+          <button class="tab active" data-tab="nodes">Ноды</button>
+          <button class="tab" data-tab="json">JSON</button>
           <button class="tab" data-tab="vless">vless</button>
           <button class="tab" data-tab="links">Ссылки</button>
           <button class="tab" data-tab="config">Конфиг xray</button>
@@ -105,12 +106,14 @@
         <span class="count" id="count"></span>
       </div>
 
-      <div class="output-actions">
+      <div class="output-actions" id="outputActions">
         <button class="btn small" id="copyBtn">Копировать</button>
         <button class="btn small" id="downloadBtn">Скачать</button>
       </div>
 
-      <pre class="output"><code id="output"></code></pre>
+      <div id="cards" class="cards hidden"></div>
+
+      <pre class="output" id="outputPre"><code id="output"></code></pre>
     </section>
 
     <footer class="footer">
