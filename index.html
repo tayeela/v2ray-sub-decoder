@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>v2ray Sub Decoder — декодер подписок</title>
+  <meta name="description" content="Декодирование v2ray/xray подписок в JSON, vless и конфиг xray. Всё работает в браузере." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">⚡</span>
+      <span>v2ray Sub Decoder</span>
+    </div>
+    <a class="gh-link" id="repoLink" href="#" target="_blank" rel="noopener">GitHub</a>
+  </header>
+
+  <main class="container">
+    <p class="lede">
+      Декодирование подписок <b>vmess / vless / shadowsocks / trojan</b> в JSON,
+      ссылки <code>vless://</code> и готовый конфиг для xray.
+      Всё считается прямо в браузере — данные никуда не отправляются
+      (кроме самого запроса подписки по URL).
+    </p>
+
+    <section class="card">
+      <label class="field-label" for="subUrl">URL подписки</label>
+      <input id="subUrl" type="url" class="input"
+             placeholder="https://example.com/sub" autocomplete="off" spellcheck="false" />
+
+      <div class="row">
+        <div class="field">
+          <label class="field-label" for="loadMode">Способ загрузки</label>
+          <select id="loadMode" class="input select">
+            <option value="direct">Прямой запрос</option>
+            <option value="allorigins" selected>Через прокси (allorigins)</option>
+            <option value="corsproxy">Через прокси (corsproxy.io)</option>
+          </select>
+        </div>
+        <button id="decodeBtn" class="btn primary">Декодировать</button>
+      </div>
+
+      <details class="paste-block">
+        <summary>…или вставить содержимое подписки вручную</summary>
+        <textarea id="subText" class="input textarea" rows="5"
+          placeholder="Вставьте base64 подписки или список ссылок vmess:// vless:// ss:// trojan://"></textarea>
+        <button id="decodeTextBtn" class="btn">Декодировать вставленный текст</button>
+      </details>
+
+      <p class="hint">
+        Прямой запрос часто блокируется браузером (CORS) — поэтому по умолчанию
+        используется публичный прокси. Прокси видит твою ссылку; для полной
+        приватности вставь содержимое подписки вручную.
+      </p>
+    </section>
+
+    <section id="status" class="status hidden"></section>
+
+    <section id="results" class="card hidden">
+      <div class="results-head">
+        <div class="tabs" id="tabs">
+          <button class="tab active" data-tab="json">JSON</button>
+          <button class="tab" data-tab="vless">vless</button>
+          <button class="tab" data-tab="links">Ссылки</button>
+          <button class="tab" data-tab="config">Конфиг xray</button>
+        </div>
+        <span class="count" id="count"></span>
+      </div>
+
+      <div class="output-actions">
+        <button class="btn small" id="copyBtn">Копировать</button>
+        <button class="btn small" id="downloadBtn">Скачать</button>
+      </div>
+
+      <pre class="output"><code id="output"></code></pre>
+    </section>
+
+    <footer class="footer">
+      Работает офлайн как статический сайт · парсинг полностью на стороне браузера
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
