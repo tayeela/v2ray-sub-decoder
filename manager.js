@@ -150,7 +150,7 @@ function mgrSetState(text, cls) {
 }
 
 function modeLabel(m) {
-  return { direct: "прямой", allorigins: "allorigins", corsproxy: "corsproxy" }[m] || m || "—";
+  return { auto: "авто", direct: "прямой", allorigins: "allorigins", corsproxy: "corsproxy", codetabs: "codetabs", corsworkers: "cors.workers.dev" }[m] || m || "—";
 }
 
 function renderList() {

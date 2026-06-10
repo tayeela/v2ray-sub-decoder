@@ -486,16 +486,71 @@ function buildConfig(nodes) {
 
 /* ----------------------------- загрузка по URL -------------------------- */
 
-async function fetchSubscription(url, mode) {
-  let target = url;
-  if (mode === "allorigins") {
-    target = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
-  } else if (mode === "corsproxy") {
-    target = "https://corsproxy.io/?url=" + encodeURIComponent(url);
+// Публичные CORS-прокси ненадёжны (умирают, лимитят, требуют ключи), поэтому
+// режим "auto" перебирает их все параллельно, а успехом считается только
+// ответ, который реально парсится хотя бы в одну ноду.
+const PROXIES = [
+  { id: "corsproxy", label: "corsproxy.io", build: (u) => "https://corsproxy.io/?url=" + encodeURIComponent(u) },
+  { id: "allorigins", label: "allorigins", build: (u) => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u) },
+  { id: "codetabs", label: "codetabs", build: (u) => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u) },
+  { id: "corsworkers", label: "cors.workers.dev", build: (u) => "https://test.cors.workers.dev/?" + u },
+];
+
+async function fetchWithTimeout(target, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(target, { cache: "no-store", signal: ctrl.signal });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return await r.text();
+  } catch (e) {
+    throw ctrl.signal.aborted ? new Error("таймаут") : e;
+  } finally {
+    clearTimeout(t);
   }
-  const resp = await fetch(target, { headers: { "User-Agent": "v2rayN/6.0" } });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return await resp.text();
+}
+
+function bodyHasNodes(body) {
+  try {
+    return parseSubscription(body).nodes.length > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function fetchSubscription(url, mode) {
+  // Конкретный способ, выбранный вручную (включая старые сохранённые значения).
+  if (mode === "direct") return fetchWithTimeout(url, 15000);
+  const single = PROXIES.find((p) => p.id === mode);
+  if (single) return fetchWithTimeout(single.build(url), 15000);
+
+  // Режим "auto": сначала прямой запрос (быстро и приватно), затем все
+  // прокси параллельно — побеждает первый ответ с валидными нодами.
+  const attempts = [];
+  try {
+    const body = await fetchWithTimeout(url, 8000);
+    if (bodyHasNodes(body)) return body;
+    attempts.push("прямой: ответ не похож на подписку");
+  } catch (e) {
+    attempts.push("прямой: " + e.message);
+  }
+
+  try {
+    return await Promise.any(
+      PROXIES.map(async (p) => {
+        try {
+          const body = await fetchWithTimeout(p.build(url), 12000);
+          if (!bodyHasNodes(body)) throw new Error("не подписка");
+          return body;
+        } catch (e) {
+          attempts.push(p.label + ": " + e.message);
+          throw e;
+        }
+      })
+    );
+  } catch (e) {
+    throw new Error("все способы не сработали — " + attempts.join("; "));
+  }
 }
 
 /* ----------------------------- UI --------------------------------------- */
@@ -763,6 +818,7 @@ async function decodeFromUrl() {
   const url = els.url.value.trim();
   if (!url) { showStatus("error", "Введите URL подписки."); return; }
   els.decode.disabled = true;
+  els.decode.textContent = "Загружаю…";
   showStatus("info", "Загрузка подписки…");
   try {
     const body = await fetchSubscription(url, els.mode.value);
@@ -770,11 +826,18 @@ async function decodeFromUrl() {
   } catch (e) {
     showStatus(
       "error",
-      `Не удалось загрузить: ${escapeHtml(e.message)}.<br>` +
-        `Попробуй другой способ загрузки (прокси) или вставь содержимое подписки вручную.`
+      `Не удалось загрузить подписку (${escapeHtml(e.message)}).<br><br>` +
+        `<b>Надёжный запасной путь:</b> открой подписку в новой вкладке — там будет текст. ` +
+        `Выдели всё (Ctrl+A), скопируй и вставь в поле ниже.<br>` +
+        `<a class="btn small" style="display:inline-block;margin-top:8px;text-decoration:none" ` +
+        `href="${escapeHtml(url)}" target="_blank" rel="noopener">↗ Открыть подписку в новой вкладке</a>`
     );
+    // раскрываем поле ручной вставки — следующий шаг для пользователя
+    const pb = document.querySelector(".paste-block");
+    if (pb) pb.open = true;
   } finally {
     els.decode.disabled = false;
+    els.decode.textContent = "Декодировать";
   }
 }
 

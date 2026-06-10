@@ -70,9 +70,12 @@
         <div class="field">
           <label class="field-label" for="loadMode">Способ загрузки</label>
           <select id="loadMode" class="input select">
+            <option value="auto" selected>Авто (перебрать все способы)</option>
             <option value="direct">Прямой запрос</option>
-            <option value="allorigins" selected>Через прокси (allorigins)</option>
-            <option value="corsproxy">Через прокси (corsproxy.io)</option>
+            <option value="corsproxy">Прокси corsproxy.io</option>
+            <option value="allorigins">Прокси allorigins</option>
+            <option value="codetabs">Прокси codetabs</option>
+            <option value="corsworkers">Прокси cors.workers.dev</option>
           </select>
         </div>
         <button id="decodeBtn" class="btn primary">Декодировать</button>
@@ -86,9 +89,11 @@
       </details>
 
       <p class="hint">
-        Прямой запрос часто блокируется браузером (CORS) — поэтому по умолчанию
-        используется публичный прокси. Прокси видит твою ссылку; для полной
-        приватности вставь содержимое подписки вручную.
+        Браузер блокирует прямые запросы к чужим серверам (CORS), поэтому режим
+        «Авто» пробует прямой запрос и несколько публичных прокси, пока один не
+        сработает. Прокси видят твою ссылку; для полной приватности (или если
+        ничего не сработало) — открой ссылку подписки в новой вкладке, скопируй
+        текст и вставь вручную.
       </p>
     </section>
 
