@@ -275,6 +275,7 @@ function splitHostPort(s) {
 function cleanNode(n) {
   const out = {};
   for (const [k, v] of Object.entries(n)) {
+    if (k === "latency") continue; // временный результат замера, не часть ноды
     if (v === "" || v === 0 || v === false || v == null) {
       // оставляем значащие поля даже при нулях
       if (["protocol", "name", "server", "port"].includes(k)) out[k] = v;
@@ -510,6 +511,8 @@ const els = {
   output: document.getElementById("output"),
   outputPre: document.getElementById("outputPre"),
   outputActions: document.getElementById("outputActions"),
+  nodesActions: document.getElementById("nodesActions"),
+  ping: document.getElementById("pingBtn"),
   cards: document.getElementById("cards"),
   count: document.getElementById("count"),
   tabs: document.getElementById("tabs"),
@@ -563,6 +566,98 @@ const COPY_ICON =
 const CHECK_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
+/* --------------------------- замер отклика -------------------------------- */
+// Браузер не умеет говорить на VLESS/Trojan/Hysteria2, поэтому меряем время
+// TCP/TLS-соединения с сервером: fetch до https://host:port в режиме no-cors.
+// Ответ почти всегда завершается ошибкой (чужой сертификат/протокол), но к
+// этому моменту рукопожатие уже состоялось — время до ошибки ≈ RTT+TLS.
+// Таймаут трактуем как "не отвечает". Это латентность, НЕ скорость скачивания.
+
+const PING_TIMEOUT = 5000;
+const PING_TRIES = 2; // берём минимум из двух попыток (первая может включать DNS)
+
+async function probeOnce(server, port) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PING_TIMEOUT);
+  const t0 = performance.now();
+  try {
+    await fetch(`https://${server}:${port}/`, {
+      mode: "no-cors",
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    return performance.now() - t0;
+  } catch (e) {
+    if (ctrl.signal.aborted) return null; // таймаут — сервер не ответил
+    return performance.now() - t0; // ошибка после рукопожатия — время валидно
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function measureNode(n) {
+  let best = null;
+  for (let i = 0; i < PING_TRIES; i++) {
+    const t = await probeOnce(n.server, n.port);
+    if (t !== null && (best === null || t < best)) best = t;
+  }
+  n.latency = best === null ? Infinity : Math.round(best);
+  return n.latency;
+}
+
+function pingBadgeState(n) {
+  if (n.latency === undefined) return { cls: "", text: "—" };
+  if (n.latency === "pending") return { cls: "pending", text: "…" };
+  if (n.latency === Infinity) return { cls: "fail", text: "нет ответа" };
+  const cls = n.latency < 200 ? "good" : n.latency < 500 ? "mid" : "bad";
+  return { cls, text: n.latency + " ms" };
+}
+
+function makePingBadge(n) {
+  const s = document.createElement("span");
+  s.className = "node-ping";
+  const st = pingBadgeState(n);
+  if (st.cls) s.classList.add(st.cls);
+  s.textContent = st.text;
+  s.title = "Время соединения (латентность), не скорость";
+  return s;
+}
+
+// Меряем все ноды (ограничивая параллельность), затем сортируем от быстрой
+// к медленной; не ответившие — в конец.
+async function pingAllAndSort() {
+  if (!current.nodes.length) return;
+  els.ping.disabled = true;
+  els.ping.textContent = "Измеряю…";
+  current.nodes.forEach((n) => (n.latency = "pending"));
+  renderCards(current.nodes);
+
+  const queue = [...current.nodes];
+  const POOL = 6;
+  let done = 0;
+  const worker = async () => {
+    while (queue.length) {
+      const n = queue.shift();
+      await measureNode(n);
+      done++;
+      els.ping.textContent = `Измеряю… ${done}/${current.nodes.length}`;
+      renderCards(current.nodes); // живое обновление бейджей
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(POOL, current.nodes.length) }, worker));
+
+  current.nodes.sort((a, b) => (a.latency ?? Infinity) - (b.latency ?? Infinity));
+  renderCards(current.nodes);
+  els.ping.disabled = false;
+  els.ping.textContent = "⚡ Измерить отклик и отсортировать";
+  const ok = current.nodes.filter((n) => n.latency !== Infinity).length;
+  showStatus(
+    "success",
+    `Готово: отсортировано от быстрой к медленной. Ответили: <b>${ok}</b> из ${current.nodes.length}.` +
+      ` <span class="muted">Это латентность соединения, не скорость скачивания.</span>`
+  );
+}
+
 // Карточка одной ноды: описание провайдера (name) + бейдж протокола + сервер +
 // кнопка быстрого копирования ссылки именно этой ноды.
 function renderCards(nodes) {
@@ -605,7 +700,7 @@ function renderCards(nodes) {
     server.className = "node-server";
     server.textContent = `${n.server}:${n.port}`;
     server.title = `${n.server}:${n.port}`;
-    sub.append(badge, server);
+    sub.append(badge, server, makePingBadge(n));
 
     card.append(top, sub);
     els.cards.appendChild(card);
@@ -615,11 +710,13 @@ function renderCards(nodes) {
 function renderOutput() {
   if (current.tab === "nodes") {
     els.cards.classList.remove("hidden");
+    els.nodesActions.classList.remove("hidden");
     els.outputPre.classList.add("hidden");
     els.outputActions.classList.add("hidden");
     renderCards(current.nodes);
   } else {
     els.cards.classList.add("hidden");
+    els.nodesActions.classList.add("hidden");
     els.outputPre.classList.remove("hidden");
     els.outputActions.classList.remove("hidden");
     els.output.textContent = RENDER[current.tab](current.nodes);
@@ -697,6 +794,8 @@ els.tabs.addEventListener("click", (e) => {
   els.tabs.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
   if (current.nodes.length) renderOutput();
 });
+
+els.ping.addEventListener("click", pingAllAndSort);
 
 els.copy.addEventListener("click", async () => {
   await copyText(els.output.textContent);
