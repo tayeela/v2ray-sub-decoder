@@ -24,6 +24,43 @@
       (кроме самого запроса подписки по URL).
     </p>
 
+    <section class="card manager">
+      <div class="manager-head">
+        <span class="manager-title">📁 Менеджер подписок</span>
+        <span id="mgrState" class="manager-state"></span>
+      </div>
+
+      <!-- не авторизован -->
+      <div id="mgrLogin">
+        <p class="hint">
+          Облачное хранилище подписок на приватном GitHub Gist. Вход по токену
+          с доступом только к <b>Gist</b> — токен хранится <b>только в этом браузере</b>
+          и используется лишь для запросов к api.github.com. Введи тот же токен на
+          другом устройстве — увидишь те же подписки.
+        </p>
+        <div class="row">
+          <input id="mgrToken" type="password" class="input" autocomplete="off"
+                 placeholder="github_pat_… или ghp_…" spellcheck="false" />
+          <button id="mgrLoginBtn" class="btn primary">Войти</button>
+        </div>
+        <p class="hint">
+          <a href="https://github.com/settings/tokens/new?scopes=gist&description=v2ray+Sub+Decoder" target="_blank" rel="noopener">Создать токен</a>
+          — scope <b>gist</b> уже будет отмечен, больше ничего включать не нужно.
+          Срок действия — на твоё усмотрение (с истечением придётся войти заново).
+        </p>
+      </div>
+
+      <!-- авторизован -->
+      <div id="mgrPanel" class="hidden">
+        <div class="manager-actions">
+          <button id="mgrSaveCurrent" class="btn small">+ Сохранить текущий URL</button>
+          <button id="mgrRefreshAll" class="btn small">Обновить список</button>
+          <button id="mgrLogout" class="btn small">Выйти</button>
+        </div>
+        <ul id="mgrList" class="sub-list"></ul>
+      </div>
+    </section>
+
     <section class="card">
       <label class="field-label" for="subUrl">URL подписки</label>
       <input id="subUrl" type="url" class="input"
@@ -82,5 +119,6 @@
   </main>
 
   <script src="app.js"></script>
+  <script src="manager.js"></script>
 </body>
 </html>
