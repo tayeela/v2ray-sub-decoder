@@ -66,7 +66,7 @@ function toInt(v) {
 /* ----------------------------- парсинг ---------------------------------- */
 
 function looksLikeLinks(s) {
-  return ["vmess://", "vless://", "ss://", "trojan://"].some((p) => s.includes(p));
+  return ["vmess://", "vless://", "ss://", "trojan://", "hysteria2://", "hy2://"].some((p) => s.includes(p));
 }
 
 // Разбор всей подписки -> { nodes, errors }
@@ -96,6 +96,7 @@ function parseLink(link) {
   if (link.startsWith("vless://")) return parseVless(link);
   if (link.startsWith("ss://")) return parseSS(link);
   if (link.startsWith("trojan://")) return parseTrojan(link);
+  if (link.startsWith("hysteria2://") || link.startsWith("hy2://")) return parseHysteria2(link);
   throw new Error("неизвестная схема");
 }
 
@@ -184,6 +185,33 @@ function parseTrojan(link) {
     service_name: q.get("serviceName") || "",
     header_type: q.get("headerType") || "",
     allow_insecure: truthy(q.get("allowInsecure")),
+    raw: link,
+  };
+}
+
+function parseHysteria2(link) {
+  // hysteria2://auth@host:port/?sni=...&insecure=1&obfs=salamander&obfs-password=... #name
+  const norm = link.replace(/^hy2:\/\//, "hysteria2://");
+  const u = new URL(norm);
+  const q = u.searchParams;
+  // auth-строка может содержать ':' (тогда URL делит её на username:password) — собираем обратно.
+  let auth = decodeURIComponent(u.username || "");
+  if (u.password) auth += ":" + decodeURIComponent(u.password);
+  return {
+    protocol: "hysteria2",
+    name: u.hash ? decodeURIComponent(u.hash.slice(1)) : "",
+    server: u.hostname,
+    port: toInt(u.port) || 443,
+    password: auth,
+    network: "udp",
+    security: "tls",
+    sni: q.get("sni") || "",
+    alpn: q.get("alpn") || "",
+    allow_insecure: truthy(q.get("insecure")),
+    obfs: q.get("obfs") || "",
+    obfs_password: q.get("obfs-password") || "",
+    pin_sha256: q.get("pinSHA256") || "",
+    ports: q.get("mport") || "", // диапазон для port-hopping
     raw: link,
   };
 }
@@ -280,6 +308,8 @@ function toURI(n) {
       return schemeURI("trojan", n.password, n);
     case "shadowsocks":
       return ssURI(n);
+    case "hysteria2":
+      return hysteria2URI(n);
     default:
       return "";
   }
@@ -334,6 +364,21 @@ function ssURI(n) {
   let s = `ss://${creds}@${hostPort(n.server, n.port)}`;
   if (n.name) s += "#" + encodeURIComponent(n.name);
   return s;
+}
+
+function hysteria2URI(n) {
+  const q = new URLSearchParams();
+  const set = (k, v) => { if (v) q.set(k, v); };
+  set("sni", n.sni);
+  set("alpn", n.alpn);
+  set("obfs", n.obfs);
+  set("obfs-password", n.obfs_password);
+  set("pinSHA256", n.pin_sha256);
+  set("mport", n.ports);
+  if (n.allow_insecure) q.set("insecure", "1");
+  const qs = q.toString();
+  const frag = n.name ? "#" + encodeURIComponent(n.name) : "";
+  return `hysteria2://${encodeURIComponent(n.password)}@${hostPort(n.server, n.port)}${qs ? "?" + qs : ""}${frag}`;
 }
 
 function toLinks(nodes) {
@@ -419,7 +464,9 @@ function buildOutbound(n, tag) {
 }
 
 function buildConfig(nodes) {
-  const outbounds = nodes.map((n, i) => buildOutbound(n, i === 0 ? "proxy" : `proxy-${i}`));
+  // xray-core не поддерживает hysteria2 — исключаем такие ноды из конфига.
+  const usable = nodes.filter((n) => n.protocol !== "hysteria2");
+  const outbounds = usable.map((n, i) => buildOutbound(n, i === 0 ? "proxy" : `proxy-${i}`));
   outbounds.push(
     { tag: "direct", protocol: "freedom", settings: {} },
     { tag: "block", protocol: "blackhole", settings: {} }
@@ -495,14 +542,19 @@ function showResults(nodes, errors) {
   els.results.classList.remove("hidden");
   renderOutput();
 
+  const hy = nodes.filter((n) => n.protocol === "hysteria2").length;
+  const hyNote = hy
+    ? ` <span class="muted">Hysteria2: ${hy} — не входят в конфиг xray (нужен sing-box / mihomo).</span>`
+    : "";
+
   if (errors && errors.length) {
     showStatus(
       "info",
-      `Разобрано: <b>${nodesWord(nodes.length)}</b>. Пропущено строк: ${errors.length}.` +
+      `Разобрано: <b>${nodesWord(nodes.length)}</b>. Пропущено строк: ${errors.length}.${hyNote}` +
         `<ul class="errlist">${errors.slice(0, 8).map((e) => `<li>${escapeHtml(e)}</li>`).join("")}</ul>`
     );
   } else {
-    showStatus("success", `Разобрано: <b>${nodesWord(nodes.length)}</b>.`);
+    showStatus("success", `Разобрано: <b>${nodesWord(nodes.length)}</b>.${hyNote}`);
   }
 }
 
