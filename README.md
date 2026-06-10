@@ -1,5 +1,7 @@
 # v2ray Sub Decoder
 
+🌐 **Сайт:** https://tayeela.github.io/v2ray-sub-decoder/
+
 Веб-приложение для декодирования v2ray/xray подписок прямо в браузере.
 Поддерживает ссылки `vmess://`, `vless://`, `ss://` (shadowsocks) и `trojan://`
 и выдаёт результат в четырёх форматах:
